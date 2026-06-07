@@ -58,7 +58,7 @@ client.on('messageCreate', async (message) => {
     // Sistema de Ponto
     if (message.content === '!ponto') {
         const userId = message.author.id;
-        const canalPonto = client.channels.cache.get('ID_DO_CANAL_DE_PONTO'); // <--- COLOQUE O ID DO CANAL AQUI
+        const canalPonto = client.channels.cache.get('1513061287741886627'); // <--- COLOQUE O ID DO CANAL AQUI
         
         if (!canalPonto) return message.reply("Erro: Canal de ponto não configurado.");
 
