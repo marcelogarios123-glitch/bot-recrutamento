@@ -4,6 +4,9 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages] 
 });
 
+// Armazena o status dos membros (Quem está logado no ponto)
+const pontos = new Map();
+
 const perguntas = [
     "Qual seu nick?", "Qual sua idade?", "Qual seu ID?", "Quanto tempo joga por dia?", 
     "Tem microfone? (Sim/Não)", "Já participou de facção? Qual?", "Sabe usar Discord? (Sim/Não)",
@@ -18,6 +21,7 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
+    // Sistema de Recrutamento
     if (message.content === '!iniciar') {
         const user = message.author;
         await message.reply("📩 Verifique suas mensagens privadas (DM) para iniciar o recrutamento!");
@@ -50,6 +54,48 @@ client.on('messageCreate', async (message) => {
             await user.send("❌ O tempo acabou ou houve um erro. Tente novamente com !iniciar");
         }
     }
+
+    // Sistema de Ponto
+    if (message.content === '!ponto') {
+        const userId = message.author.id;
+        const canalPonto = client.channels.cache.get('ID_DO_CANAL_DE_PONTO'); // <--- COLOQUE O ID DO CANAL AQUI
+        
+        if (!canalPonto) return message.reply("Erro: Canal de ponto não configurado.");
+
+        const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+        if (!pontos.has(userId)) {
+            pontos.set(userId, new Date());
+            const embed = new EmbedBuilder()
+                .setTitle('🕒 Registro de Entrada')
+                .setColor(0x00FF00)
+                .setDescription(`${message.author} iniciou o serviço.`)
+                .addFields({ name: 'Horário', value: agora });
+            
+            await canalPonto.send({ embeds: [embed] });
+            await message.reply("✅ Ponto de entrada registrado!");
+        } else {
+            const inicio = pontos.get(userId);
+            const fim = new Date();
+            const duracaoMs = fim - inicio;
+            const horas = Math.floor(duracaoMs / 3600000);
+            const minutos = Math.floor((duracaoMs % 3600000) / 60000);
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🕒 Registro de Saída')
+                .setColor(0xFF0000)
+                .setDescription(`${message.author} finalizou o serviço.`)
+                .addFields(
+                    { name: 'Entrada', value: inicio.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) },
+                    { name: 'Saída', value: agora },
+                    { name: 'Tempo total', value: `${horas}h ${minutos}m` }
+                );
+            
+            await canalPonto.send({ embeds: [embed] });
+            pontos.delete(userId);
+            await message.reply("✅ Ponto de saída registrado!");
+        }
+    }
 });
 
 // Servidor simples para o UptimeRobot "pingar" e o bot não dormir
@@ -59,5 +105,4 @@ http.createServer((req, res) => {
   res.end();
 }).listen(process.env.PORT || 3000);
 
-// A senha agora é lida pelo sistema de variáveis de ambiente do Render
 client.login(process.env.TOKEN);
