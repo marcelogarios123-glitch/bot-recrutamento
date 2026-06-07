@@ -58,9 +58,10 @@ client.on('messageCreate', async (message) => {
     // Sistema de Ponto
     if (message.content === '!ponto') {
         const userId = message.author.id;
-        const canalPonto = client.channels.cache.get('1513061287741886627'); // <--- COLOQUE O ID DO CANAL AQUI
+        const canalPonto = client.channels.cache.get('1513050110873833613'); 
+        const canalHoras = client.channels.cache.get('1513050211046527096'); // <--- COLOQUE O ID AQUI
         
-        if (!canalPonto) return message.reply("Erro: Canal de ponto não configurado.");
+        if (!canalPonto || !canalHoras) return message.reply("Erro: Canais de ponto ou horas não configurados.");
 
         const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
@@ -81,7 +82,8 @@ client.on('messageCreate', async (message) => {
             const horas = Math.floor(duracaoMs / 3600000);
             const minutos = Math.floor((duracaoMs % 3600000) / 60000);
             
-            const embed = new EmbedBuilder()
+            // Embed para o canal de Ponto (Detalhado)
+            const embedPonto = new EmbedBuilder()
                 .setTitle('🕒 Registro de Saída')
                 .setColor(0xFF0000)
                 .setDescription(`${message.author} finalizou o serviço.`)
@@ -91,9 +93,19 @@ client.on('messageCreate', async (message) => {
                     { name: 'Tempo total', value: `${horas}h ${minutos}m` }
                 );
             
-            await canalPonto.send({ embeds: [embed] });
+            // Embed para o canal de Horas (Resumo)
+            const embedHoras = new EmbedBuilder()
+                .setTitle('📊 Relatório de Horas')
+                .setColor(0x0099FF)
+                .setDescription(`${message.author} completou seu turno.`)
+                .addFields({ name: 'Total de Horas', value: `${horas}h ${minutos}m` })
+                .setFooter({ text: 'BDC - Gestão de Atividade' });
+            
+            await canalPonto.send({ embeds: [embedPonto] });
+            await canalHoras.send({ embeds: [embedHoras] });
+            
             pontos.delete(userId);
-            await message.reply("✅ Ponto de saída registrado!");
+            await message.reply("✅ Ponto de saída registrado e horas enviadas para o relatório!");
         }
     }
 });
