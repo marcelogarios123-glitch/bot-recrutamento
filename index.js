@@ -52,5 +52,12 @@ client.on('messageCreate', async (message) => {
     }
 });
 
+// Servidor simples para o UptimeRobot "pingar" e o bot não dormir
+const http = require('http');
+http.createServer((req, res) => {
+  res.write("Bot BDC Online!");
+  res.end();
+}).listen(process.env.PORT || 3000);
+
 // A senha agora é lida pelo sistema de variáveis de ambiente do Render
 client.login(process.env.TOKEN);
