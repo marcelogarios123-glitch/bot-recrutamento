@@ -1,12 +1,22 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const fs = require('fs');
+const path = './dados_horas.json';
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages] 
 });
 
-// Armazena o status dos membros (Quem está logado no ponto)
-const pontos = new Map();
+// Funções para manipular o arquivo de horas
+function carregarHoras() {
+    if (!fs.existsSync(path)) return {};
+    return JSON.parse(fs.readFileSync(path, 'utf8'));
+}
 
+function salvarHoras(dados) {
+    fs.writeFileSync(path, JSON.stringify(dados, null, 2));
+}
+
+const pontos = new Map();
 const perguntas = [
     "Qual seu nick?", "Qual sua idade?", "Qual seu ID?", "Quanto tempo joga por dia?", 
     "Tem microfone? (Sim/Não)", "Já participou de facção? Qual?", "Sabe usar Discord? (Sim/Não)",
@@ -21,6 +31,8 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
     // Sistema de Recrutamento
     if (message.content === '!iniciar') {
         const user = message.author;
@@ -59,14 +71,15 @@ client.on('messageCreate', async (message) => {
     if (message.content === '!ponto') {
         const userId = message.author.id;
         const canalPonto = client.channels.cache.get('1513050110873833613'); 
-        const canalHoras = client.channels.cache.get('1513050211046527096'); // <--- COLOQUE O ID AQUI
+        const canalHoras = client.channels.cache.get('1513050211046527096');
         
         if (!canalPonto || !canalHoras) return message.reply("Erro: Canais de ponto ou horas não configurados.");
 
-        const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-
         if (!pontos.has(userId)) {
-            pontos.set(userId, new Date());
+            // REGISTRO DE ENTRADA
+            pontos.set(userId, Date.now());
+            const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            
             const embed = new EmbedBuilder()
                 .setTitle('🕒 Registro de Entrada')
                 .setColor(0x00FF00)
@@ -76,41 +89,47 @@ client.on('messageCreate', async (message) => {
             await canalPonto.send({ embeds: [embed] });
             await message.reply("✅ Ponto de entrada registrado!");
         } else {
+            // REGISTRO DE SAÍDA
             const inicio = pontos.get(userId);
-            const fim = new Date();
+            const fim = Date.now();
             const duracaoMs = fim - inicio;
-            const horas = Math.floor(duracaoMs / 3600000);
-            const minutos = Math.floor((duracaoMs % 3600000) / 60000);
             
-            // Embed para o canal de Ponto (Detalhado)
-            const embedPonto = new EmbedBuilder()
-                .setTitle('🕒 Registro de Saída')
-                .setColor(0xFF0000)
-                .setDescription(`${message.author} finalizou o serviço.`)
-                .addFields(
-                    { name: 'Entrada', value: inicio.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) },
-                    { name: 'Saída', value: agora },
-                    { name: 'Tempo total', value: `${horas}h ${minutos}m` }
-                );
+            // Cálculos
+            const duracaoHoras = duracaoMs / 3600000;
+            let banco = carregarHoras();
             
-            // Embed para o canal de Horas (Resumo)
+            // Se o usuário não existir no arquivo, inicializa com 0
+            if (!banco[userId]) banco[userId] = 0;
+            
+            // Soma a duração da sessão atual ao total
+            banco[userId] += duracaoHoras;
+            salvarHoras(banco);
+
+            // Calcula total formatado para exibição
+            const totalMs = banco[userId] * 3600000;
+            const totalHoras = Math.floor(totalMs / 3600000);
+            const totalMinutos = Math.floor((totalMs % 3600000) / 60000);
+
+            const horasSessao = Math.floor(duracaoMs / 3600000);
+            const minSessao = Math.floor((duracaoMs % 3600000) / 60000);
+            
             const embedHoras = new EmbedBuilder()
                 .setTitle('📊 Relatório de Horas')
                 .setColor(0x0099FF)
                 .setDescription(`${message.author} completou seu turno.`)
-                .addFields({ name: 'Total de Horas', value: `${horas}h ${minutos}m` })
+                .addFields(
+                    { name: 'Duração desta sessão', value: `${horasSessao}h ${minSessao}m`, inline: true },
+                    { name: 'Total Acumulado', value: `${totalHoras}h ${totalMinutos}m`, inline: true }
+                )
                 .setFooter({ text: 'BDC - Gestão de Atividade' });
             
-            await canalPonto.send({ embeds: [embedPonto] });
             await canalHoras.send({ embeds: [embedHoras] });
-            
             pontos.delete(userId);
-            await message.reply("✅ Ponto de saída registrado e horas enviadas para o relatório!");
+            await message.reply("✅ Ponto de saída registrado e horas somadas ao total!");
         }
     }
 });
 
-// Servidor simples para o UptimeRobot "pingar" e o bot não dormir
 const http = require('http');
 http.createServer((req, res) => {
   res.write("Bot BDC Online!");
