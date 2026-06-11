@@ -1,26 +1,30 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
-const path = './dados_horas.json';
+
+// Caminhos dos arquivos
+const pathHoras = './dados_horas.json';
+const pathPontos = './pontos_ativos.json';
 
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages] 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.DirectMessages
+    ] 
 });
 
-// Funções para manipular o arquivo de horas
-function carregarHoras() {
+// Funções de manipulação de arquivos
+function carregarDados(path) {
     if (!fs.existsSync(path)) return {};
-    try {
-        return JSON.parse(fs.readFileSync(path, 'utf8'));
-    } catch (err) {
-        return {};
-    }
+    try { return JSON.parse(fs.readFileSync(path, 'utf8')); } 
+    catch (err) { return {}; }
 }
 
-function salvarHoras(dados) {
+function salvarDados(path, dados) {
     fs.writeFileSync(path, JSON.stringify(dados, null, 2));
 }
 
-const pontos = new Map();
 const perguntas = [
     "Qual seu nick?", "Qual sua idade?", "Qual seu ID?", "Quanto tempo joga por dia?", 
     "Tem microfone? (Sim/Não)", "Já participou de facção? Qual?", "Sabe usar Discord? (Sim/Não)",
@@ -57,33 +61,32 @@ client.on('messageCreate', async (message) => {
                     .setTitle('Formulário Concluído')
                     .setDescription(`Candidato: ${user.tag} (${user.id})`)
                     .setColor(0x00FF00);
-                
-                perguntas.forEach((p, i) => {
-                    embed.addFields({ name: p, value: respostas[i] });
-                });
-
+                perguntas.forEach((p, i) => embed.addFields({ name: p, value: respostas[i] }));
                 await canalLogs.send({ embeds: [embed] });
                 await dm.send("✅ Formulário enviado com sucesso!");
             }
         } catch (e) {
-            console.error(e);
             await user.send("❌ O tempo acabou ou houve um erro. Tente novamente com !iniciar");
         }
     }
 
-    // Sistema de Ponto (CORRIGIDO PARA ACUMULAR SEM RESETAR)
+    // Sistema de Ponto (Persistente)
     if (message.content === '!ponto') {
         const userId = message.author.id;
+        let pontosAtivos = carregarDados(pathPontos);
+        let bancoHoras = carregarDados(pathHoras);
+        
         const canalPonto = client.channels.cache.get('1513050110873833613'); 
         const canalHoras = client.channels.cache.get('1513050211046527096');
         
-        if (!canalPonto || !canalHoras) return message.reply("Erro: Canais de ponto ou horas não configurados.");
+        if (!canalPonto || !canalHoras) return message.reply("Erro: Canais não configurados.");
 
-        if (!pontos.has(userId)) {
-            // REGISTRO DE ENTRADA
-            pontos.set(userId, Date.now());
-            const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        if (!pontosAtivos[userId]) {
+            // ENTRADA
+            pontosAtivos[userId] = Date.now();
+            salvarDados(pathPontos, pontosAtivos);
             
+            const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             const embed = new EmbedBuilder()
                 .setTitle('🕒 Registro de Entrada')
                 .setColor(0x00FF00)
@@ -93,25 +96,21 @@ client.on('messageCreate', async (message) => {
             await canalPonto.send({ embeds: [embed] });
             await message.reply("✅ Ponto de entrada registrado!");
         } else {
-            // REGISTRO DE SAÍDA
-            const inicio = pontos.get(userId);
-            const fim = Date.now();
-            const duracaoMs = fim - inicio;
+            // SAÍDA
+            const inicio = pontosAtivos[userId];
+            const duracaoMs = Date.now() - inicio;
             
-            let banco = carregarHoras();
-            
-            // Inicializa usuário se não existir
-            if (!banco[userId]) banco[userId] = 0;
-            
-            // SOMA O TEMPO EM MILISSEGUNDOS (SEM DIVISÃO ANTES DE SALVAR)
-            banco[userId] += duracaoMs;
-            salvarHoras(banco);
+            if (!bancoHoras[userId]) bancoHoras[userId] = 0;
+            bancoHoras[userId] += duracaoMs;
+            salvarDados(pathHoras, bancoHoras);
 
-            // Cálculos para exibição baseados no total acumulado em MS
-            const totalMs = banco[userId];
+            // Remover do registro de ativos
+            delete pontosAtivos[userId];
+            salvarDados(pathPontos, pontosAtivos);
+
+            const totalMs = bancoHoras[userId];
             const totalHoras = Math.floor(totalMs / 3600000);
             const totalMinutos = Math.floor((totalMs % 3600000) / 60000);
-
             const horasSessao = Math.floor(duracaoMs / 3600000);
             const minSessao = Math.floor((duracaoMs % 3600000) / 60000);
             
@@ -120,22 +119,18 @@ client.on('messageCreate', async (message) => {
                 .setColor(0x0099FF)
                 .setDescription(`${message.author} completou seu turno.`)
                 .addFields(
-                    { name: 'Duração desta sessão', value: `${horasSessao}h ${minSessao}m`, inline: true },
+                    { name: 'Duração da sessão', value: `${horasSessao}h ${minSessao}m`, inline: true },
                     { name: 'Total Acumulado', value: `${totalHoras}h ${totalMinutos}m`, inline: true }
-                )
-                .setFooter({ text: 'BDC - Gestão de Atividade' });
+                );
             
             await canalHoras.send({ embeds: [embedHoras] });
-            pontos.delete(userId);
             await message.reply("✅ Ponto de saída registrado e horas somadas!");
         }
     }
 });
 
+// Servidor para manter o bot ativo (ex: no Render)
 const http = require('http');
-http.createServer((req, res) => {
-  res.write("Bot BDC Online!");
-  res.end();
-}).listen(process.env.PORT || 3000);
+http.createServer((req, res) => res.end("Bot BDC Online!")).listen(process.env.PORT || 3000);
 
 client.login(process.env.TOKEN);
