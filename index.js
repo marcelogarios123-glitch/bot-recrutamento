@@ -9,7 +9,11 @@ const client = new Client({
 // Funções para manipular o arquivo de horas
 function carregarHoras() {
     if (!fs.existsSync(path)) return {};
-    return JSON.parse(fs.readFileSync(path, 'utf8'));
+    try {
+        return JSON.parse(fs.readFileSync(path, 'utf8'));
+    } catch (err) {
+        return {};
+    }
 }
 
 function salvarHoras(dados) {
@@ -67,7 +71,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // Sistema de Ponto
+    // Sistema de Ponto (CORRIGIDO PARA ACUMULAR SEM RESETAR)
     if (message.content === '!ponto') {
         const userId = message.author.id;
         const canalPonto = client.channels.cache.get('1513050110873833613'); 
@@ -94,19 +98,17 @@ client.on('messageCreate', async (message) => {
             const fim = Date.now();
             const duracaoMs = fim - inicio;
             
-            // Cálculos
-            const duracaoHoras = duracaoMs / 3600000;
             let banco = carregarHoras();
             
-            // Se o usuário não existir no arquivo, inicializa com 0
+            // Inicializa usuário se não existir
             if (!banco[userId]) banco[userId] = 0;
             
-            // Soma a duração da sessão atual ao total
-            banco[userId] += duracaoHoras;
+            // SOMA O TEMPO EM MILISSEGUNDOS (SEM DIVISÃO ANTES DE SALVAR)
+            banco[userId] += duracaoMs;
             salvarHoras(banco);
 
-            // Calcula total formatado para exibição
-            const totalMs = banco[userId] * 3600000;
+            // Cálculos para exibição baseados no total acumulado em MS
+            const totalMs = banco[userId];
             const totalHoras = Math.floor(totalMs / 3600000);
             const totalMinutos = Math.floor((totalMs % 3600000) / 60000);
 
@@ -125,7 +127,7 @@ client.on('messageCreate', async (message) => {
             
             await canalHoras.send({ embeds: [embedHoras] });
             pontos.delete(userId);
-            await message.reply("✅ Ponto de saída registrado e horas somadas ao total!");
+            await message.reply("✅ Ponto de saída registrado e horas somadas!");
         }
     }
 });
