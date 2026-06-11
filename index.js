@@ -16,7 +16,7 @@ const client = new Client({
     ] 
 });
 
-// Funções de manipulação de arquivos com tratamento de erro
+// Funções de manipulação de arquivos
 function carregarDados(filePath) {
     try {
         if (!fs.existsSync(filePath)) {
@@ -38,6 +38,13 @@ function salvarDados(filePath, dados) {
     }
 }
 
+// Função auxiliar para formatar ms em texto
+function formatarTempo(ms) {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return `${h}h e ${m}m`;
+}
+
 const perguntas = [
     "Qual seu nick?", "Qual sua idade?", "Qual seu ID?", "Quanto tempo joga por dia?", 
     "Tem microfone? (Sim/Não)", "Já participou de facção? Qual?", "Sabe usar Discord? (Sim/Não)",
@@ -50,10 +57,6 @@ const perguntas = [
 client.once('ready', () => {
     console.log(`Bot logado como ${client.user.tag}!`);
 });
-
-// Proteção contra desconexão
-client.on('error', error => console.error('Erro no Client:', error));
-client.on('shardDisconnect', () => console.warn('Conexão perdida. Tentando reconectar...'));
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
@@ -80,6 +83,13 @@ client.on('messageCreate', async (message) => {
         } catch (e) { await user.send("❌ Erro ou tempo esgotado."); }
     }
 
+    // Comando para consultar horas totais
+    if (message.content === '!horas') {
+        const bancoHoras = carregarDados(pathHoras);
+        const totalMs = bancoHoras[message.author.id] || 0;
+        await message.reply(`📊 Você tem um total de ${formatarTempo(totalMs)} trabalhadas.`);
+    }
+
     // Sistema de Ponto
     if (message.content === '!ponto') {
         const userId = message.author.id;
@@ -103,15 +113,12 @@ client.on('messageCreate', async (message) => {
             delete pontosAtivos[userId];
             salvarDados(pathPontos, pontosAtivos);
             
-            const h = Math.floor(duracaoMs / 3600000);
-            const m = Math.floor((duracaoMs % 3600000) / 60000);
-            await message.reply(`✅ Ponto de saída! Você trabalhou ${h}h e ${m}m.`);
-            if (canalHoras) await canalHoras.send(`${message.author} encerrou o turno. Duração: ${h}h ${m}m.`);
+            await message.reply(`✅ Ponto de saída! Turno: ${formatarTempo(duracaoMs)}. Total acumulado: ${formatarTempo(bancoHoras[userId])}.`);
+            if (canalHoras) await canalHoras.send(`${message.author} encerrou o turno. Turno: ${formatarTempo(duracaoMs)}. Total: ${formatarTempo(bancoHoras[userId])}.`);
         }
     }
 });
 
-// Servidor Keep-Alive
 http.createServer((req, res) => {
     res.writeHead(200);
     res.end("Bot Online");
