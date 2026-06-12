@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -38,7 +38,6 @@ function salvarDados(filePath, dados) {
     }
 }
 
-// Função auxiliar para formatar ms em texto
 function formatarTempo(ms) {
     const h = Math.floor(ms / 3600000);
     const m = Math.floor((ms % 3600000) / 60000);
@@ -58,13 +57,14 @@ client.once('ready', () => {
     console.log(`Bot logado como ${client.user.tag}!`);
 });
 
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+// Tratamento de Interações (Cliques de Botão)
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
 
-    // Sistema de Recrutamento
-    if (message.content === '!iniciar') {
-        const user = message.author;
-        await message.reply("📩 Verifique suas mensagens privadas (DM) para iniciar o recrutamento!");
+    if (interaction.customId === 'iniciar_recrutamento') {
+        const user = interaction.user;
+        await interaction.reply({ content: "📩 Verifique suas mensagens privadas (DM) para iniciar o recrutamento!", ephemeral: true });
+
         try {
             const dm = await user.createDM();
             let respostas = [];
@@ -82,15 +82,33 @@ client.on('messageCreate', async (message) => {
             }
         } catch (e) { await user.send("❌ Erro ou tempo esgotado."); }
     }
+});
 
-    // Comando para consultar horas totais
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    // Comando para enviar o botão (Apenas administradores)
+    if (message.content === '!setup' && message.member.permissions.has('Administrator')) {
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('iniciar_recrutamento')
+                    .setLabel('Iniciar Recrutamento')
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+        await message.channel.send({
+            content: 'Clique no botão abaixo para iniciar o seu recrutamento:',
+            components: [row]
+        });
+    }
+
     if (message.content === '!horas') {
         const bancoHoras = carregarDados(pathHoras);
         const totalMs = bancoHoras[message.author.id] || 0;
         await message.reply(`📊 Você tem um total de ${formatarTempo(totalMs)} trabalhadas.`);
     }
 
-    // Sistema de Ponto
     if (message.content === '!ponto') {
         const userId = message.author.id;
         let pontosAtivos = carregarDados(pathPontos);
